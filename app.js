@@ -127,7 +127,7 @@ app.get('/pubnub-subscribe', function(req, res)
 		});
 		
 	    res.contentType('application/json');
-	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: "127.0.0.1:8080"}) + ')', 200);
+	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[2]+":"+process.argv[3]}) + ')', 200);
 	});
 	
 	
@@ -243,4 +243,4 @@ app.get('/', function(req, res)
 
 app.listen(process.argv[2]);
 
-sys.log("nodejs app.js is now running on port " +process.argv[2]);
+sys.log("pubnub server is now listening on: "+process.argv[2]+ ":" + process.argv[3]);
