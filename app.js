@@ -16,20 +16,21 @@ app.configure(function(){
     //app.use(express.cookieDecoder());
     //app.use(express.session());
     app.use(app.router);
-    //app.use(express.staticProvider(__dirname + '/public'));
+    app.use(express.staticProvider(__dirname + '/public'));
     app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 	redPublisher.flushdb();
 });
 
 
 // TODO: purge when number of messages > 100 on any channel: ZREMRANGEBYSCORE
+// TODO: figure out what is pubnub-x-origin suppose to return
 
-
-
-
-
-
-
+/*
+app,get('pubnub-x-origin', function(req, res)
+{
+	
+});
+*/
 
 app.get('/pubnub-time', function(req, res) 
 {
@@ -73,6 +74,7 @@ app.get('/pubnub-publish', function(req, res)
 	
 	// TODO: Check subscribe key & publish key
 
+	console.log("DEBUG (ch "+ channel +"): "+ message);
 	
 	// We only need ONE redisClient in async to publish!
 	redPublisher.publish(channel, message);
@@ -88,7 +90,7 @@ app.get('/pubnub-publish', function(req, res)
 // TODO: "/pubnub-subscribe?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&unique=" + unique;
 app.get('/pubnub-subscribe', function(req, res) 
 {
-	//console.log('/pubnub-subscribe');
+	console.log('/pubnub-subscribe: '+req.param("channel"));
 	
 	var channel = req.param("channel");
 	var unique = req.param("unique");
@@ -139,6 +141,9 @@ app.get('/', function(req, res)
 		timeToken = req.param("timetoken") || 0,
 		unique = req.param("unique"),
 		tempRedisClient = redis.createClient();
+	
+	
+	console.log("polling request for " + channel);
 	
 	// Make sure we send a reply within 30 sec if nothing happens!
 	setTimeout( function() 
