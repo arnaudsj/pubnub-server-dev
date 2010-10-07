@@ -38,7 +38,7 @@ app,get('pubnub-x-origin', function(req, res)
 
 app.get('/pubnub.js', function(req, res)
 {
-	res.contentType('application/javascript');
+	res.contentType('text/javascript');
 	res.render('pubnub.ejs', {
 		locals: {
 			hostname: process.argv[4],
@@ -144,7 +144,7 @@ app.get('/pubnub-subscribe', function(req, res)
 		});
 		
 	    res.contentType('application/json');
-	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[2]+":"+process.argv[3]}) + ')', 200);
+	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', 200);
 	});
 	
 	
