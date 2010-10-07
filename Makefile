@@ -22,7 +22,7 @@ npm:
 	bin/npm config set root  ${PWD}/.node_libraries
 	
 npmmods:
-	bin/npm install vows@latest;
-	bin/npm install express;
-	bin/npm install redis;
-	
+	bin/npm install vows@stable;
+	bin/npm install express@stable;
+	bin/npm install ejs@stable;	
+	bin/npm install redis@stable;

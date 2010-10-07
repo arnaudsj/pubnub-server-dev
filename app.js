@@ -16,7 +16,11 @@ app.configure(function(){
     //app.use(express.cookieDecoder());
     //app.use(express.session());
     app.use(app.router);
-    app.use(express.staticProvider(__dirname + '/public'));
+	app.set('view engine', 'ejs');
+	app.set('view options', {
+	    layout: false
+	});
+    /*app.use(express.staticProvider(__dirname + '/public'));*/
     app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 	redPublisher.flushdb();
 });
@@ -31,6 +35,19 @@ app,get('pubnub-x-origin', function(req, res)
 	
 });
 */
+
+app.get('/pubnub.js', function(req, res)
+{
+	res.contentType('application/javascript');
+	res.render('pubnub.ejs', {
+		locals: {
+			hostname: process.argv[4],
+			port: process.argv[3]
+		}
+	})
+});
+
+
 
 app.get('/pubnub-time', function(req, res) 
 {
@@ -241,6 +258,6 @@ app.get('/', function(req, res)
 
 });
 
-app.listen(process.argv[2]);
+app.listen(process.argv[3]);
 
 sys.log("pubnub server is now listening on: "+process.argv[2]+ ":" + process.argv[3]);
