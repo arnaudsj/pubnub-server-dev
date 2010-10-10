@@ -38,13 +38,13 @@ app,get('pubnub-x-origin', function(req, res)
 
 app.get('/pubnub.js', function(req, res)
 {
-	res.contentType('text/javascript');
+	//res.contentType('text/javascript');
 	res.render('pubnub.ejs', {
 		locals: {
 			hostname: process.argv[4],
 			port: process.argv[3]
 		}
-	})
+	});
 });
 
 
@@ -56,8 +56,7 @@ app.get('/pubnub-time', function(req, res)
 		time: (+new Date)
 	}
 	
-    res.contentType('application/json');
-    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', 200);
+    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
 });
 
 app.get('/pubnub-uuid', function(req, res) 
@@ -78,8 +77,7 @@ app.get('/pubnub-uuid', function(req, res)
 		uuid: (generate(8)+'-'+generate(4)+'-'+generate(4)+'-'+generate(4)+'-'+generate(12))
 	}
 	
-	res.contentType('application/json');
-    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', 200);
+    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
 });
 
 // TODO: "/pubnub-publish?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&message=" + JSON.stringify(message) +"&publish_key=" + this.PUBLISH_KEY + "&unique=" + unique;
@@ -100,8 +98,7 @@ app.get('/pubnub-publish', function(req, res)
 		status: 200
 	};
 
-    res.contentType('application/json');
-	res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', 200);
+	res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' },  200);
 });
 
 // TODO: "/pubnub-subscribe?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&unique=" + unique;
@@ -143,8 +140,7 @@ app.get('/pubnub-subscribe', function(req, res)
 			
 		});
 		
-	    res.contentType('application/json');
-	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', 200);
+	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
 	});
 	
 	
@@ -170,8 +166,7 @@ app.get('/', function(req, res)
 				messages : ['xdr.timeout'],
 				timetoken: +new Date
 			});			
-			res.contentType('application/json');
-			res.send('window["'+unique+'"]('+messageString+')', 200);
+			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 		},
 	30000)
 	
@@ -200,9 +195,8 @@ app.get('/', function(req, res)
 				timetoken: maxTimeToken
 			});
 			
-			res.contentType('application/json');
 			//console.log('window["'+unique+'"]('+messageString+')');
-			res.send('window["'+unique+'"]('+messageString+')', 200);
+			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 		}
 		else
 		{
@@ -241,9 +235,8 @@ app.get('/', function(req, res)
 								timetoken: maxTimeToken
 							});
 							
-							res.contentType('application/json');
 							//console.log('window["'+unique+'"]('+messageString+')');
-							res.send('window["'+unique+'"]('+messageString+')', 200);
+							res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 							
 						}
 					);
