@@ -104,47 +104,54 @@ app.get('/pubnub-publish', function(req, res)
 // TODO: "/pubnub-subscribe?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&unique=" + unique;
 app.get('/pubnub-subscribe', function(req, res) 
 {
-	console.log('/pubnub-subscribe: '+req.param("channel"));
+	
 	
 	var channel = req.param("channel");
 	var unique = req.param("unique");
-		
+	
+	// We are not subscribing so let's do it!
 	if (typeof redSubscribers[channel] === 'undefined')
 	{
+		console.log('/pubnub-subscribe (new): '+req.param("channel"));
 		redSubscribers[channel] = redis.createClient();
-	}
-
-	redSubscribers[channel].on("subscribe", function(channel, count)
-	{
-		redSubscribers[channel].on("message", function (channel, message) 
+		redSubscribers[channel].on("subscribe", function(channel, count)
 		{
-			var timeToken = +new Date;
-			var messageString = JSON.stringify(
-				{
-					timeToken: timeToken,
-					message: message.toString()
-				}
-			);
+			redSubscribers[channel].on("message", function (channel, message) 
+			{
+				var timeToken = +new Date;
+				var messageString = JSON.stringify(
+					{
+						timeToken: timeToken,
+						message: message.toString()
+					}
+				);
+
+				redPublisher.zadd( channel, timeToken.toString(), messageString, 
+					function(error, replies)
+					{
+						redPublisher.publish('#' + channel, messageString, 
+							function ()
+							{
+								//console.log("broadcasting on #"+channel+" message: "+messageString);
+							}
+						);
+					}
+				);
+
+			});
 			
-			redPublisher.zadd( channel, timeToken.toString(), messageString, 
-				function(error, replies)
-				{
-					redPublisher.publish('#' + channel, messageString, 
-						function ()
-						{
-							//console.log("broadcasting on #"+channel+" message: "+messageString);
-						}
-					);
-				}
-			);
-			
-		});
+			res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
+		})
 		
-	    res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
-	});
-	
-	
-	redSubscribers[channel].subscribe(channel);
+		redSubscribers[channel].subscribe(channel);
+
+	}
+	// we are subscribing to just send a polite message
+	else
+	{
+		console.log('/pubnub-subscribe (skipped): '+req.param("channel"));
+		res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
+	}
 });
 
 
