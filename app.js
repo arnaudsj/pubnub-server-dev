@@ -156,7 +156,14 @@ app.get('/', function(req, res)
 		tempRedisClient = redis.createClient();
 	
 	
-	console.log("polling request for " + channel);
+	console.log("polling request for " + channel + " with: " + timeToken);
+	
+	// Auto correct request with timeToken = 0, because they will get the whole history of channel!
+	if (timeToken == 0)
+	{
+		timeToken = (+new Date) - 1;
+		console.log("auto corrected timeToken to: " + timeToken);
+	}
 	
 	// Make sure we send a reply within 30 sec if nothing happens!
 	setTimeout( function() 
