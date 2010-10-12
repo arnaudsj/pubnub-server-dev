@@ -5,7 +5,10 @@ var sys = require('sys'),
 	redis = require("redis");
     
 var redPublisher = redis.createClient();
-var redSubscribers = {};
+var redSubscribers = {},
+	redSubscribersTimeKeeper = {},
+	redPollers = {},
+	redPollersTimeKeeper = {};
 
 var app = express.createServer();
 
@@ -92,7 +95,10 @@ app.get('/pubnub-publish', function(req, res)
 	console.log("DEBUG (ch "+ channel +"): "+ message);
 	
 	// We only need ONE redisClient in async to publish!
-	redPublisher.publish(channel, message);
+	redPublisher.publish(channel, message, function(count, err)
+	{
+		console.log(count + " subscribers (redis) got the message!")
+	});
 
 	var pubnubResponse = {
 		status: 200
@@ -104,8 +110,6 @@ app.get('/pubnub-publish', function(req, res)
 // TODO: "/pubnub-subscribe?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&unique=" + unique;
 app.get('/pubnub-subscribe', function(req, res) 
 {
-	
-	
 	var channel = req.param("channel");
 	var unique = req.param("unique");
 	
@@ -113,7 +117,17 @@ app.get('/pubnub-subscribe', function(req, res)
 	if (typeof redSubscribers[channel] === 'undefined')
 	{
 		console.log('/pubnub-subscribe (new): '+req.param("channel"));
+		
 		redSubscribers[channel] = redis.createClient();
+		
+		redSubscribers[channel].on("unsubscribe", 
+			function (channel, count) 
+			{
+				console.log("purging inactive subscriber")
+				redSubscribers[channel].end();
+			}
+		);
+		
 		redSubscribers[channel].on("subscribe", function(channel, count)
 		{
 			redSubscribers[channel].on("message", function (channel, message) 
@@ -149,7 +163,19 @@ app.get('/pubnub-subscribe', function(req, res)
 	// we are subscribing to just send a polite message
 	else
 	{
-		console.log('/pubnub-subscribe (skipped): '+req.param("channel"));
+		var channel = req.param("channel");
+		
+		console.log('/pubnub-subscribe (keep-alive): '+channel);
+		
+		// Now clear previous time out, then set a new one!
+		
+		clearTimeout(redSubscribersTimeKeeper[channel]);
+		
+		redSubscribersTimeKeeper[channel] = setTimeOut(function()
+		{
+			redSubscribers[channel].unsubscribe();
+		} , 60000);
+		
 		res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
 	}
 });
@@ -160,8 +186,10 @@ app.get('/', function(req, res)
 	var channel = req.param("channel"),
 		timeToken = req.param("timetoken") || 0,
 		unique = req.param("unique"),
-		tempRedisClient = redis.createClient();
-	
+		tempRedisClient = redis.createClient(),
+		isRedisSubscribing = 0,
+		hasRedisReplied = 0,
+		redisMessageStack = [];
 	
 	console.log("polling request for " + channel + " with: " + timeToken);
 	
@@ -175,92 +203,139 @@ app.get('/', function(req, res)
 	// Make sure we send a reply within 30 sec if nothing happens!
 	setTimeout( function() 
 		{ 
-			tempRedisClient.unsubscribe();
+			// Treat Redis client with care!
+			if (isRedisSubscribing) 
+			{
+				tempRedisClient.unsubscribe();
+			}
+			else
+			{
+				tempRedisClient.end();
+			}
+			
+			// Create timeout message
 			var messageString = JSON.stringify({
 				messages : ['xdr.timeout'],
 				timetoken: +new Date
-			});			
-			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
-		},
-	30000)
-	
-	redPublisher.zrangebyscore(channel, timeToken+1, "+inf", function(error, replies) 
-	{
-		if (replies !== null) 
-		{
-			tempRedisClient.end();
-			
-			var messages = JSON.parse('['+replies.toString()+']');
-			var maxTimeToken = 0;
-			var messageList = [];
-			
-			for (var i=0; i<messages.length; i++)
-			{
-				if (messages[i].timeToken > maxTimeToken)
-				{
-					maxTimeToken = messages[i].timeToken;
-				}
-				
-				messageList.push(JSON.parse(messages[i].message));
-			}
-			
-			var messageString = JSON.stringify({
-				messages : messageList,
-				timetoken: maxTimeToken
 			});
 			
-			//console.log('window["'+unique+'"]('+messageString+')');
+			// Send it!
+			console.log("returning xdr timeout");
 			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
-		}
-		else
+		},
+	30000);
+	
+	// Make sure we end properly our redis client!
+	tempRedisClient.on("unsubscribe", 
+		function (channel, count) 
 		{
-			tempRedisClient.on("unsubscribe", 
-				function (channel, count) 
-				{
-					tempRedisClient.end();
-				}
-			);
-			
-			
-			tempRedisClient.on("subscribe", 
-				function(channel, count)
-				{
-					tempRedisClient.on("message",
-						function(channel, replies)
-						{
-							tempRedisClient.unsubscribe();
-							
-							var messages = JSON.parse('['+replies.toString()+']');
-							var maxTimeToken = 0;
-							var messageList = [];
-							
-							for (var i=0; i<messages.length; i++)
-							{
-								if (messages[i].timeToken > maxTimeToken)
-								{
-									maxTimeToken = messages[i].timeToken;
-								}
-								
-								messageList.push(JSON.parse(messages[i].message));
-							}
-							
-							var messageString = JSON.stringify({
-								messages : messageList,
-								timetoken: maxTimeToken
-							});
-							
-							//console.log('window["'+unique+'"]('+messageString+')');
-							res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
-							
-						}
-					);
-				}
-			);
-			
-			// Now we start listening!
-			tempRedisClient.subscribe('#'+channel);
+			tempRedisClient.end();
 		}
-	});
+	);
+	
+	// Now subscribe to internal channel!
+	tempRedisClient.on("subscribe", 
+		function(channel, count)
+		{
+			isRedisSubscribing = 1;
+			
+			// Ok, we are now subscribing, let's check if need to fire older messages queued up!
+			redPublisher.zrangebyscore(channel, timeToken+1, "+inf", function(error, replies) 
+			{
+				if (replies !== null) 
+				// We unsubscribe, and send the batch we have here!
+				{
+					tempRedisClient.unsubscribe();
+
+					var messages = JSON.parse('['+replies.toString()+']');
+					var maxTimeToken = 0;
+					var messageList = [];
+
+					for (var i=0; i<messages.length; i++)
+					{
+						if (messages[i].timeToken > maxTimeToken)
+						{
+							maxTimeToken = messages[i].timeToken;
+						}
+
+						messageList.push(JSON.parse(messages[i].message));
+					}
+
+					var messageString = JSON.stringify({
+						messages : messageList,
+						timetoken: maxTimeToken
+					});
+
+					//console.log('window["'+unique+'"]('+messageString+')');
+					res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
+				}
+				else
+				// No records in Redis, let's flag that it is OK to send 
+				{
+					hasRedisReplied = 1;
+				}
+			});
+		}
+	);
+
+	// When we get messages make sure to only push back the ones > timeToken requested!
+	tempRedisClient.on("message",
+		function(channel, replies)
+		{
+			if (hasRedisReplied)
+			{
+				var messages = JSON.parse('['+replies.toString()+']');
+				var maxTimeToken = 0;
+				var messageList = [];
+
+				console.log(messages);
+
+				for (var i=0; i<redisMessageStack.length; i++)
+				{
+					messages.unshift(redisMessageStack[i]);
+				}
+
+
+				console.log(messages);
+				
+				for (var i=0; i<messages.length; i++)
+				{
+					if (messages[i].timeToken > maxTimeToken)
+					{
+						maxTimeToken = messages[i].timeToken;
+					}
+
+					console.log(messages[i]);
+
+					messageList.push(JSON.parse(messages[i].message));
+				}
+
+				var messageString = JSON.stringify({
+					messages : messageList,
+					timetoken: maxTimeToken
+				});
+
+				tempRedisClient.unsubscribe();
+				res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
+			}
+			else
+			{
+				var messages = JSON.parse('['+replies.toString()+']');
+				
+				for (var i=0; i<messages.length; i++)
+				{
+					redisMessageStack.push(messages[i]);
+				}
+				
+				console.log("pushed into Redis Message Stack (previous zrange query not ready!)")
+				
+				tempRedisClient.emit("message", channel, "");
+			}
+		}
+	);
+	
+	// Now we start listening!
+	tempRedisClient.subscribe('#'+channel);
 	
 
 });
