@@ -6,6 +6,7 @@ var sys = require('sys'),
     
 var redPublisher = redis.createClient();
 var redSubscribers = {},
+	redXdrTimeOutReq = {},
 	redSubscribersTimeKeeper = {},
 	redPollers = {},
 	redPollersTimeKeeper = {};
@@ -28,8 +29,26 @@ app.configure(function(){
 	redPublisher.flushdb();
 });
 
+/*
+function purgeCall(channel)
+{
+	clearTimeout(redSubscribersTimeKeeper[channel]);
+	redSubscribersTimeKeeper[channel] = setTimeout(function()
+	{
+		if (typeof redSubscribers[channel] !== 'undefined')
+		{
+			redSubscribers[channel].unsubscribe();
+		}
+		if (typeof redPollers[channel] !== 'undefined')
+		{
+			redPollers[channel].unsubscribe();
+		}
+	} , 60000);
+}
+*/
 
-// TODO: purge when number of messages > 100 on any channel: ZREMRANGEBYSCORE
+
+// TODO: purge RedisClients that are inactive!!!
 // TODO: figure out what is pubnub-x-origin suppose to return
 
 /*
@@ -167,15 +186,6 @@ app.get('/pubnub-subscribe', function(req, res)
 		
 		console.log('/pubnub-subscribe (keep-alive): '+channel);
 		
-		// Now clear previous time out, then set a new one!
-		
-		clearTimeout(redSubscribersTimeKeeper[channel]);
-		
-		redSubscribersTimeKeeper[channel] = setTimeOut(function()
-		{
-			redSubscribers[channel].unsubscribe();
-		} , 60000);
-		
 		res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
 	}
 });
@@ -201,7 +211,8 @@ app.get('/', function(req, res)
 	}
 	
 	// Make sure we send a reply within 30 sec if nothing happens!
-	setTimeout( function() 
+	var uniqueHash = channel+'/'+timeToken+'/'+unique;
+	redXdrTimeOutReq[uniqueHash] = setTimeout( function() 
 		{ 
 			// Treat Redis client with care!
 			if (isRedisSubscribing) 
@@ -220,7 +231,11 @@ app.get('/', function(req, res)
 			});
 			
 			// Send it!
-			console.log("returning xdr timeout");
+			console.log("("+(typeof res)+") xdr timeout for "+uniqueHash);
+			
+			clearTimeout(redXdrTimeOutReq[uniqueHash]);
+			delete redXdrTimeOutReq[uniqueHash];
+			
 			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 		},
 	30000);
@@ -267,6 +282,9 @@ app.get('/', function(req, res)
 					});
 
 					//console.log('window["'+unique+'"]('+messageString+')');
+					clearTimeout(redXdrTimeOutReq[uniqueHash]);
+					delete redXdrTimeOutReq[uniqueHash];
+					
 					res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 				}
 				else
@@ -315,7 +333,13 @@ app.get('/', function(req, res)
 					timetoken: maxTimeToken
 				});
 
+				// Clean our client before sending back data to user!
 				tempRedisClient.unsubscribe();
+				
+				// Clear the timeOut to make sure it does not execute!
+				clearTimeout(redXdrTimeOutReq[uniqueHash]);
+				delete redXdrTimeOutReq[uniqueHash];
+				
 				res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 			}
 			else
