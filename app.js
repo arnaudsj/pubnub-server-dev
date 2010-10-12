@@ -111,13 +111,10 @@ app.get('/pubnub-publish', function(req, res)
 	
 	// TODO: Check subscribe key & publish key
 
-	console.log("DEBUG (ch "+ channel +"): "+ message);
+	console.log("received (ch "+ channel +"): "+ message);
 	
 	// We only need ONE redisClient in async to publish!
-	redPublisher.publish(channel, message, function(count, err)
-	{
-		console.log(count + " subscribers (redis) got the message!")
-	});
+	redPublisher.publish(channel, message);
 
 	var pubnubResponse = {
 		status: 200
@@ -162,12 +159,7 @@ app.get('/pubnub-subscribe', function(req, res)
 				redPublisher.zadd( channel, timeToken.toString(), messageString, 
 					function(error, replies)
 					{
-						redPublisher.publish('#' + channel, messageString, 
-							function ()
-							{
-								//console.log("broadcasting on #"+channel+" message: "+messageString);
-							}
-						);
+						redPublisher.publish('#' + channel, messageString);
 					}
 				);
 
@@ -196,22 +188,22 @@ app.get('/', function(req, res)
 	var channel = req.param("channel"),
 		timeToken = req.param("timetoken") || 0,
 		unique = req.param("unique"),
+		uniqueHash = channel+'/'+timeToken+'/'+unique,
 		tempRedisClient = redis.createClient(),
 		isRedisSubscribing = 0,
 		hasRedisReplied = 0,
 		redisMessageStack = [];
-	
-	console.log("polling request for " + channel + " with: " + timeToken);
+		
+	console.log("polling request for: " + uniqueHash);
 	
 	// Auto correct request with timeToken = 0, because they will get the whole history of channel!
 	if (timeToken == 0)
 	{
 		timeToken = (+new Date) - 1;
-		console.log("auto corrected timeToken to: " + timeToken);
+		//console.log("auto corrected timeToken to: " + timeToken);
 	}
 	
 	// Make sure we send a reply within 30 sec if nothing happens!
-	var uniqueHash = channel+'/'+timeToken+'/'+unique;
 	redXdrTimeOutReq[uniqueHash] = setTimeout( function() 
 		{ 
 			// Treat Redis client with care!
@@ -231,7 +223,7 @@ app.get('/', function(req, res)
 			});
 			
 			// Send it!
-			console.log("("+(typeof res)+") xdr timeout for "+uniqueHash);
+			console.log("Xdr timeout for: "+uniqueHash);
 			
 			clearTimeout(redXdrTimeOutReq[uniqueHash]);
 			delete redXdrTimeOutReq[uniqueHash];
@@ -285,6 +277,7 @@ app.get('/', function(req, res)
 					clearTimeout(redXdrTimeOutReq[uniqueHash]);
 					delete redXdrTimeOutReq[uniqueHash];
 					
+					console.log("poll response for: "+uniqueHash+"\n"+ messageString);
 					res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 				}
 				else
@@ -296,25 +289,33 @@ app.get('/', function(req, res)
 		}
 	);
 
+
+	var redisStackCallBack = null;
+
 	// When we get messages make sure to only push back the ones > timeToken requested!
 	tempRedisClient.on("message",
 		function(channel, replies)
 		{
 			if (hasRedisReplied)
 			{
+				//Clear the callback!
+				clearTimeout(redisStackCallBack);
+				redisStackCallBack = null;  
+				
 				var messages = JSON.parse('['+replies.toString()+']');
 				var maxTimeToken = 0;
 				var messageList = [];
 
-				console.log(messages);
+				console.log("debug (b4 stack): " + JSON.stringify(messages));
 
 				for (var i=0; i<redisMessageStack.length; i++)
 				{
 					messages.unshift(redisMessageStack[i]);
 				}
 
-
-				console.log(messages);
+				delete redisMessageStack;
+				
+				console.log("debug (combined): "+ JSON.stringify(messages));
 				
 				for (var i=0; i<messages.length; i++)
 				{
@@ -323,7 +324,7 @@ app.get('/', function(req, res)
 						maxTimeToken = messages[i].timeToken;
 					}
 
-					console.log(messages[i]);
+					//console.log(messages[i]);
 
 					messageList.push(JSON.parse(messages[i].message));
 				}
@@ -340,6 +341,7 @@ app.get('/', function(req, res)
 				clearTimeout(redXdrTimeOutReq[uniqueHash]);
 				delete redXdrTimeOutReq[uniqueHash];
 				
+				console.log("poll response for: "+uniqueHash+"\n"+ messageString);
 				res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 			}
 			else
@@ -351,9 +353,14 @@ app.get('/', function(req, res)
 					redisMessageStack.push(messages[i]);
 				}
 				
-				console.log("pushed into Redis Message Stack (previous zrange query not ready!)")
+				console.log("pushed into Redis Message Stack (previous zrange query not ready!)");
+				console.log(JSON.stringify(redisMessageStack));
 				
-				tempRedisClient.emit("message", channel, "");
+				redisStackCallBack = setTimeout(function()
+				{
+					console.log("redis stack callback firing for:"+channel);
+					tempRedisClient.emit("message", channel, "");
+				}, 50);
 			}
 		}
 	);
