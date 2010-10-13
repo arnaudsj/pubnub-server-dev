@@ -17,17 +17,17 @@ var app = express.createServer();
 app.configure(function(){
     app.use(express.methodOverride());
     app.use(express.bodyDecoder());
-    //app.use(express.cookieDecoder());
-    //app.use(express.session());
     app.use(app.router);
 	app.set('view engine', 'ejs');
 	app.set('view options', {
 	    layout: false
 	});
-    /*app.use(express.staticProvider(__dirname + '/public'));*/
     app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 	redPublisher.flushdb();
 });
+
+
+// TODO: purge RedisClients that are inactive!!!
 
 /*
 function purgeCall(channel)
@@ -47,17 +47,6 @@ function purgeCall(channel)
 }
 */
 
-
-// TODO: purge RedisClients that are inactive!!!
-// TODO: figure out what is pubnub-x-origin suppose to return
-
-/*
-app,get('pubnub-x-origin', function(req, res)
-{
-	
-});
-*/
-
 app.get('/pubnub.js', function(req, res)
 {
 	//res.contentType('text/javascript');
@@ -69,20 +58,33 @@ app.get('/pubnub.js', function(req, res)
 	});
 });
 
+app.get('/pubnub-x-origin', function(req, res) 
+{
+	var unique = req.param("unique");
 
+	pubnubResponse = {
+		"x-origin": 1
+	}
+	
+    res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
+});
 
 app.get('/pubnub-time', function(req, res) 
 {
+	var unique = req.param("unique");
+	
 	pubnubResponse = {
 		status: 200,
 		time: (+new Date)
 	}
 	
-    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
+    res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
 });
 
 app.get('/pubnub-uuid', function(req, res) 
 {
+	var unique = req.param("unique");	
+	
     var generate = function(l)
 	{
 		var result = "";
@@ -99,7 +101,7 @@ app.get('/pubnub-uuid', function(req, res)
 		uuid: (generate(8)+'-'+generate(4)+'-'+generate(4)+'-'+generate(4)+'-'+generate(12))
 	}
 	
-    res.send('window[""](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
+    res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
 });
 
 // TODO: "/pubnub-publish?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&message=" + JSON.stringify(message) +"&publish_key=" + this.PUBLISH_KEY + "&unique=" + unique;
@@ -146,6 +148,8 @@ app.get('/pubnub-subscribe', function(req, res)
 		
 		redSubscribers[channel].on("subscribe", function(channel, count)
 		{
+			console.log("persistent redis client waiting for messages on:"+channel);
+			
 			redSubscribers[channel].on("message", function (channel, message) 
 			{
 				var timeToken = +new Date;
@@ -156,9 +160,12 @@ app.get('/pubnub-subscribe', function(req, res)
 					}
 				);
 
+				console.log("received redis message on channel:"+channel+"\\/\n"+messageString);
+
 				redPublisher.zadd( channel, timeToken.toString(), messageString, 
 					function(error, replies)
 					{
+						console.log("publishing redis message back on internal #channel!");
 						redPublisher.publish('#' + channel, messageString);
 					}
 				);
