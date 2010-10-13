@@ -237,7 +237,7 @@ app.get('/', function(req, res)
 			
 			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
 		},
-	30000);
+	25000);
 	
 	// Make sure we end properly our redis client!
 	tempRedisClient.on("unsubscribe", 
