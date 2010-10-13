@@ -49,12 +49,12 @@ function purgeCall(channel)
 
 app.get('/pubnub.js', function(req, res)
 {
-	//res.contentType('text/javascript');
 	res.render('pubnub.ejs', {
 		locals: {
 			hostname: process.argv[4],
-			port: process.argv[3]
-		}
+			port: process.argv[3],
+		},
+		headers: { 'Content-Type': 'application/javascript' }
 	});
 });
 
@@ -262,7 +262,7 @@ app.get('/', function(req, res)
 					tempRedisClient.unsubscribe();
 
 					var messages = JSON.parse('['+replies.toString()+']');
-					var maxTimeToken = 0;
+					var maxTimeToken = +new Date;
 					var messageList = [];
 
 					for (var i=0; i<messages.length; i++)
@@ -310,7 +310,7 @@ app.get('/', function(req, res)
 				redisStackCallBack = null;  
 				
 				var messages = JSON.parse('['+replies.toString()+']');
-				var maxTimeToken = 0;
+				var maxTimeToken = +new Date;
 				var messageList = [];
 
 				console.log("debug (b4 stack): " + JSON.stringify(messages));
