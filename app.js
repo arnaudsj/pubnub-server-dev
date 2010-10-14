@@ -1,18 +1,66 @@
 require.paths.unshift('./.node_libraries');
 
+DEBUG = 0;
+
 var sys = require('sys'),
 	express = require('express'),
 	redis = require("redis");
     
 var redPublisher = redis.createClient();
+var redPSubscriber = redis.createClient();
+var redDataClient = redis.createClient();
+
 var redSubscribers = {},
-	redXdrTimeOutReq = {},
-	redSubscribersTimeKeeper = {},
-	redPollers = {},
-	redPollersTimeKeeper = {};
+	redXdrTimeOutReq = {}
+
+var p = {
+	debug: function(m)
+		{
+			if (DEBUG)
+			{
+				console.log(m);
+			}
+		}
+};
+
+
+/* PubSub Core */
+redPSubscriber.on("psubscribe", function(pattern, count)
+{
+	p.debug("persistent redis client waiting for messages on channel with pattern:"+pattern);
+})
+
+redPSubscriber.on("pmessage", function (pattern, channel, message) 
+{
+	var timeToken = +new Date;
+	var messageString = JSON.stringify(
+		{
+			timeToken: timeToken,
+			message: message.toString()
+		}
+	);
+
+	var chan = channel.substring(1);
+
+	p.debug("("+pattern+") received message on channel: "+chan+" \\n"+messageString);
+
+	redDataClient.zadd( chan, timeToken.toString(), messageString, 
+		function(error, replies)
+		{
+			var storeChannel = "s/"+chan;
+			p.debug("stored message, sending ping on " + storeChannel + " to all internal polling clients on that channel");
+			redPublisher.publish(storeChannel, timeToken);
+		}
+	);
+});
+
+redPSubscriber.psubscribe("/*");
+
+
+
+/* Express App */
 
 var app = express.createServer();
-
 
 app.configure(function(){
     app.use(express.methodOverride());
@@ -26,33 +74,15 @@ app.configure(function(){
 	redPublisher.flushdb();
 });
 
-
-// TODO: purge RedisClients that are inactive!!!
-
-/*
-function purgeCall(channel)
-{
-	clearTimeout(redSubscribersTimeKeeper[channel]);
-	redSubscribersTimeKeeper[channel] = setTimeout(function()
-	{
-		if (typeof redSubscribers[channel] !== 'undefined')
-		{
-			redSubscribers[channel].unsubscribe();
-		}
-		if (typeof redPollers[channel] !== 'undefined')
-		{
-			redPollers[channel].unsubscribe();
-		}
-	} , 60000);
-}
-*/
-
-app.get('/pubnub.js', function(req, res)
+// js-api?pub-key=7795f1ac-fa60-414e-b01a-0d5ec643b4cb&sub-key=752a4eb0-b502-11df-a256-2f52a4db9804
+app.get('/js-api', function(req, res)
 {
 	res.render('pubnub.ejs', {
 		locals: {
 			hostname: process.argv[4],
 			port: process.argv[3],
+			pubKey: req.param("pub-key"),
+			subKey: req.param("sub-key"),
 		},
 		headers: { 'Content-Type': 'application/javascript' }
 	});
@@ -85,6 +115,7 @@ app.get('/pubnub-uuid', function(req, res)
 {
 	var unique = req.param("unique");	
 	
+	// FIXME: Find better way to generate unique ID (and store it?)
     var generate = function(l)
 	{
 		var result = "";
@@ -104,7 +135,6 @@ app.get('/pubnub-uuid', function(req, res)
     res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' }, 200);
 });
 
-// TODO: "/pubnub-publish?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&message=" + JSON.stringify(message) +"&publish_key=" + this.PUBLISH_KEY + "&unique=" + unique;
 app.get('/pubnub-publish', function(req, res) 
 {
 	var channel = req.param("channel");
@@ -113,10 +143,10 @@ app.get('/pubnub-publish', function(req, res)
 	
 	// TODO: Check subscribe key & publish key
 
-	console.log("received (ch "+ channel +"): "+ message);
+	p.debug("received (ch "+ channel +"): "+ message);
 	
 	// We only need ONE redisClient in async to publish!
-	redPublisher.publish(channel, message);
+	redPublisher.publish("/"+channel, message);
 
 	var pubnubResponse = {
 		status: 200
@@ -125,68 +155,13 @@ app.get('/pubnub-publish', function(req, res)
 	res.send('window["'+unique+'"](' + JSON.stringify(pubnubResponse) + ')', { 'Content-Type': 'application/javascript' },  200);
 });
 
-// TODO: "/pubnub-subscribe?channel=" + this.SUBSCRIBE_KEY +"/" + channel + "&unique=" + unique;
 app.get('/pubnub-subscribe', function(req, res) 
 {
 	var channel = req.param("channel");
 	var unique = req.param("unique");
 	
-	// We are not subscribing so let's do it!
-	if (typeof redSubscribers[channel] === 'undefined')
-	{
-		console.log('/pubnub-subscribe (new): '+req.param("channel"));
-		
-		redSubscribers[channel] = redis.createClient();
-		
-		redSubscribers[channel].on("unsubscribe", 
-			function (channel, count) 
-			{
-				console.log("purging inactive subscriber")
-				redSubscribers[channel].end();
-			}
-		);
-		
-		redSubscribers[channel].on("subscribe", function(channel, count)
-		{
-			console.log("persistent redis client waiting for messages on:"+channel);
-			
-			redSubscribers[channel].on("message", function (channel, message) 
-			{
-				var timeToken = +new Date;
-				var messageString = JSON.stringify(
-					{
-						timeToken: timeToken,
-						message: message.toString()
-					}
-				);
-
-				console.log("received redis message on channel:"+channel+"\\/\n"+messageString);
-
-				redPublisher.zadd( channel, timeToken.toString(), messageString, 
-					function(error, replies)
-					{
-						console.log("publishing redis message back on internal #channel!");
-						redPublisher.publish('#' + channel, messageString);
-					}
-				);
-
-			});
-			
-			res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
-		})
-		
-		redSubscribers[channel].subscribe(channel);
-
-	}
-	// we are subscribing to just send a polite message
-	else
-	{
-		var channel = req.param("channel");
-		
-		console.log('/pubnub-subscribe (keep-alive): '+channel);
-		
-		res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
-	}
+	// Tell the client where to poll from!
+	res.send('window["'+unique+'"](' + JSON.stringify({status: 200, server: process.argv[4]+":"+process.argv[3]}) + ')', { 'Content-Type': 'application/javascript' },  200);
 });
 
 
@@ -194,136 +169,63 @@ app.get('/', function(req, res)
 {
 	var channel = req.param("channel"),
 		timeToken = req.param("timetoken") || 0,
-		unique = req.param("unique"),
-		uniqueHash = channel+'/'+timeToken+'/'+unique,
-		tempRedisClient = redis.createClient(),
-		isRedisSubscribing = 0,
-		hasRedisReplied = 0,
-		redisMessageStack = [];
+		unique = req.param("unique");
 		
-	console.log("polling request for: " + uniqueHash);
+	var responseString = "";
+		
+	p.debug("polling request for: " + channel + "/" + timeToken);
+	
+	var tempClient = redis.createClient();
 	
 	// Auto correct request with timeToken = 0, because they will get the whole history of channel!
 	if (timeToken == 0)
 	{
 		timeToken = (+new Date) - 1;
-		//console.log("auto corrected timeToken to: " + timeToken);
+		//p.debug("auto corrected timeToken to: " + timeToken);
 	}
 	
 	// Make sure we send a reply within 30 sec if nothing happens!
+	var uniqueHash = channel+'/'+timeToken+'/'+unique;
 	redXdrTimeOutReq[uniqueHash] = setTimeout( function() 
 		{ 
-			// Treat Redis client with care!
-			if (isRedisSubscribing) 
-			{
-				tempRedisClient.unsubscribe();
-			}
-			else
-			{
-				tempRedisClient.end();
-			}
-			
 			// Create timeout message
-			var messageString = JSON.stringify({
+			responseString = JSON.stringify({
 				messages : ['xdr.timeout'],
 				timetoken: +new Date
 			});
+
+			p.debug("Xdr timeout for: "+uniqueHash);
 			
-			// Send it!
-			console.log("Xdr timeout for: "+uniqueHash);
-			
-			clearTimeout(redXdrTimeOutReq[uniqueHash]);
-			delete redXdrTimeOutReq[uniqueHash];
-			
-			res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
+			// Clean our client (which will trigger response back!)
+			tempClient.unsubscribe();
 		},
 	25000);
 	
-	// Make sure we end properly our redis client!
-	tempRedisClient.on("unsubscribe", 
-		function (channel, count) 
+	tempClient.on("unsubscribe", function(channel, count)
+	{
+		p.debug("killed temp redis client");
+		tempClient.end();
+		clearTimeout(redXdrTimeOutReq[uniqueHash]);
+		delete redXdrTimeOutReq[uniqueHash];
+		
+		// Send it!			
+		res.send('window["'+unique+'"]('+responseString+')', { 'Content-Type': 'application/javascript' }, 200);
+	});
+
+	tempClient.on("message", function(channel, message)
+	{
+		var chan = channel.substring(2); // to trime the s/ in s/pub-key/channel
+		
+		// Got notification we stored something, so let's query and return the goods!
+		p.debug("**** querying redis zrange for"+  chan + " / " + (timeToken+1));
+		redDataClient.zrangebyscore(chan, "("+timeToken, "+inf", function(error, replies) 
 		{
-			tempRedisClient.end();
-		}
-	);
-	
-	// Now subscribe to internal channel!
-	tempRedisClient.on("subscribe", 
-		function(channel, count)
-		{
-			isRedisSubscribing = 1;
-			
-			// Ok, we are now subscribing, let's check if need to fire older messages queued up!
-			redPublisher.zrangebyscore(channel, timeToken+1, "+inf", function(error, replies) 
+			if (replies !== null) 
 			{
-				if (replies !== null) 
-				// We unsubscribe, and send the batch we have here!
-				{
-					tempRedisClient.unsubscribe();
-
-					var messages = JSON.parse('['+replies.toString()+']');
-					var maxTimeToken = +new Date;
-					var messageList = [];
-
-					for (var i=0; i<messages.length; i++)
-					{
-						if (messages[i].timeToken > maxTimeToken)
-						{
-							maxTimeToken = messages[i].timeToken;
-						}
-
-						messageList.push(JSON.parse(messages[i].message));
-					}
-
-					var messageString = JSON.stringify({
-						messages : messageList,
-						timetoken: maxTimeToken
-					});
-
-					//console.log('window["'+unique+'"]('+messageString+')');
-					clearTimeout(redXdrTimeOutReq[uniqueHash]);
-					delete redXdrTimeOutReq[uniqueHash];
-					
-					console.log("poll response for: "+uniqueHash+"\n"+ messageString);
-					res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
-				}
-				else
-				// No records in Redis, let's flag that it is OK to send 
-				{
-					hasRedisReplied = 1;
-				}
-			});
-		}
-	);
-
-
-	var redisStackCallBack = null;
-
-	// When we get messages make sure to only push back the ones > timeToken requested!
-	tempRedisClient.on("message",
-		function(channel, replies)
-		{
-			if (hasRedisReplied)
-			{
-				//Clear the callback!
-				clearTimeout(redisStackCallBack);
-				redisStackCallBack = null;  
-				
 				var messages = JSON.parse('['+replies.toString()+']');
 				var maxTimeToken = +new Date;
 				var messageList = [];
 
-				console.log("debug (b4 stack): " + JSON.stringify(messages));
-
-				for (var i=0; i<redisMessageStack.length; i++)
-				{
-					messages.unshift(redisMessageStack[i]);
-				}
-
-				delete redisMessageStack;
-				
-				console.log("debug (combined): "+ JSON.stringify(messages));
-				
 				for (var i=0; i<messages.length; i++)
 				{
 					if (messages[i].timeToken > maxTimeToken)
@@ -331,51 +233,65 @@ app.get('/', function(req, res)
 						maxTimeToken = messages[i].timeToken;
 					}
 
-					//console.log(messages[i]);
-
 					messageList.push(JSON.parse(messages[i].message));
 				}
 
-				var messageString = JSON.stringify({
+				responseString = JSON.stringify({
 					messages : messageList,
 					timetoken: maxTimeToken
 				});
 
-				// Clean our client before sending back data to user!
-				tempRedisClient.unsubscribe();
-				
-				// Clear the timeOut to make sure it does not execute!
-				clearTimeout(redXdrTimeOutReq[uniqueHash]);
-				delete redXdrTimeOutReq[uniqueHash];
-				
-				console.log("poll response for: "+uniqueHash+"\n"+ messageString);
-				res.send('window["'+unique+'"]('+messageString+')', { 'Content-Type': 'application/javascript' }, 200);
+				tempClient.unsubscribe();
 			}
-			else
-			{
-				var messages = JSON.parse('['+replies.toString()+']');
-				
-				for (var i=0; i<messages.length; i++)
-				{
-					redisMessageStack.push(messages[i]);
-				}
-				
-				console.log("pushed into Redis Message Stack (previous zrange query not ready!)");
-				console.log(JSON.stringify(redisMessageStack));
-				
-				redisStackCallBack = setTimeout(function()
-				{
-					console.log("redis stack callback firing for:"+channel);
-					tempRedisClient.emit("message", channel, "");
-				}, 50);
-			}
-		}
-	);
+		});	
+	});
 	
-	// Now we start listening!
-	tempRedisClient.subscribe('#'+channel);
-	
+	tempClient.on("subscribe", function(channel, count)
+	{
+		p.debug("temp poll client subscribing");
+	});
 
+	// Ok, we are now subscribing, let's check if need to fire older messages queued up!
+	redDataClient.zrangebyscore(channel, "("+timeToken, "+inf", function(error, replies) 
+	{
+		p.debug("querying redis zrange for"+ channel + " / " + (timeToken) + "=> "+ replies);
+		if (replies !== null) 
+		{
+			var messages = JSON.parse('['+replies.toString()+']');
+			var maxTimeToken = +new Date;
+			var messageList = [];
+
+			for (var i=0; i<messages.length; i++)
+			{
+				if (messages[i].timeToken > maxTimeToken)
+				{
+					maxTimeToken = messages[i].timeToken;
+				}
+
+				messageList.push(JSON.parse(messages[i].message));
+			}
+
+			responseString = JSON.stringify({
+				messages : messageList,
+				timetoken: maxTimeToken
+			});
+
+			// Here slightly different, we can't unsubsribe!
+			tempClient.end();
+			clearTimeout(redXdrTimeOutReq[uniqueHash]);
+			delete redXdrTimeOutReq[uniqueHash];
+
+			p.debug("poll response for (via zrange): "+uniqueHash+"\n"+ responseString);
+			res.send('window["'+unique+'"]('+responseString+')', { 'Content-Type': 'application/javascript' }, 200);
+		}
+		else
+		// No records in Redis, let's subscribe to our internal store channel!
+		{
+			var storeChannel = "s/" + channel;
+			p.debug("subscribing/listening to internal store channel: "+storeChannel)
+			tempClient.subscribe(storeChannel);
+		}
+	});
 });
 
 app.listen(process.argv[3]);
