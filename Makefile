@@ -15,14 +15,24 @@ nodejs:
 
 redis:
 	cd deps/redis; make install PREFIX=${PWD}
-	
+
 npm:
+	rm -Rf ~/.npmrc;
 	rm -Rf ${PWD}/.node_libraries;
-	cd deps/npm; export PATH=${PWD}/bin:$(PATH); make
-	bin/npm config set root  ${PWD}/.node_libraries
-	
+	cd deps/npm; export PATH=${PWD}/bin:"$(PATH)"; make install
+	PATH=bin bin/npm config set root  ${PWD}/.node_libraries
+	PATH=bin bin/npm config set binroot ${PWD}/bin
+	PATH=bin bin/npm config set tar `which tar`
+	PATH=bin bin/npm config set gzipbin `which gzip`
+
+# npm:
+# 	rm -Rf ${PWD}/.node_libraries;
+# 	cd deps/npm; export PATH=${PWD}/bin:$(PATH); make
+# 	bin/npm config set root  ${PWD}/.node_libraries
+
 npmmods:
-	bin/npm install vows@stable;
-	bin/npm install express@stable;
-	bin/npm install ejs@stable;	
-	bin/npm install redis@stable;
+	PATH=bin bin/npm install vows@latest;
+	PATH=bin bin/npm install express@latest;
+	PATH=bin bin/npm install ejs@latest;	
+	PATH=bin bin/npm install redis@latest;
+	PATH=bin bin/npm install node-evented@latest;	

@@ -1,0 +1,25 @@
+* Fix bug (new) after waiting a while and going back to send some activity
+
+{"messages":[{"uuid":"8a2a34a7-7bc5-60ad-d1bb-6914036a48d2","pos":[127,515],"c":609}],"timetoken":1300594994230}
+poll response for (via delayed zrange): demo/mouse-speak/1300594953041/x331300594953049
+{"messages":[{"uuid":"8a2a34a7-7bc5-60ad-d1bb-6914036a48d2","pos":[127,515],"c":609}],"timetoken":1300594994231}
+
+node.js:134
+        throw e; // process.nextTick error, or 'error' event on first tick
+        ^
+Error: Can't use mutable header APIs after sent.
+    at ServerResponse.getHeader (http.js:542:11)
+    at ServerResponse.header (/Users/arnaudsj/Development/Github/pubnub-server-dev/.node_libraries/.npm/express/2.0.0/package/lib/response.js:226:17)
+    at ServerResponse.send (/Users/arnaudsj/Development/Github/pubnub-server-dev/.node_libraries/.npm/express/2.0.0/package/lib/response.js:65:17)
+    at Object.callback (/Users/arnaudsj/Development/Github/pubnub-server-dev/app.js:312:12)
+    at RedisClient.return_reply (/Users/arnaudsj/Development/Github/pubnub-server-dev/.node_libraries/.npm/redis/0.5.9/package/index.js:387:29)
+    at RedisReplyParser.<anonymous> (/Users/arnaudsj/Development/Github/pubnub-server-dev/.node_libraries/.npm/redis/0.5.9/package/index.js:87:14)
+    at RedisReplyParser.emit (events.js:64:17)
+    at RedisReplyParser.add_multi_bulk_reply (/Users/arnaudsj/Development/Github/pubnub-server-dev/.node_libraries/.npm/redis/0.5.9/package/lib/parser/javascript.js:297:14)
+    at RedisReplyarnaudsj@neptune.local ~/Development/Github/pubnub-server-dev
+
+* Improve burst mode (don't send EVERY message rigth away, wait at least maybe a certain amount of time before sending, make it a param, default maybe 50 ms?)
+
+* Review 3.1 new implementation
+
+

@@ -1,9 +1,9 @@
-[submodule "deps/node"]
-	path = deps/node
-	url = git://github.com/ry/node.git
 [submodule "deps/npm"]
 	path = deps/npm
 	url = git://github.com/isaacs/npm.git
 [submodule "deps/redis"]
 	path = deps/redis
 	url = git://github.com/antirez/redis.git
+[submodule "deps/node"]
+	path = deps/node
+	url = https://github.com/joyent/node

@@ -2,7 +2,7 @@
 
 ## In a nutshell
 
-- Talk to PubNub API from Node.js 
+- Pubnub FOSS server for debugging & development based on Node.js & Redis 
 
 ## Synopsis
 
@@ -27,13 +27,10 @@ Tested with Node.js `v0.2.0`.
 
 You have a number of choices:
 
-- git clone this repo or download a tarball and simply copy `lib/pubnub-client.js` into your project
-- use git submodule
-- use the [npm]() package manager for Node.js
+- git clone this repo 
+- download a tarball
 
 ## Running the tests
-
-A good way to learn about this client is to read the test code.
 
 To run the tests, install and run redis on the localhost on port 6379 (defaults).
 Then run `node test/test.js [-v|-q]` where `-v` is for "verbose" and `-q` is for "quiet".
@@ -46,6 +43,6 @@ Then run `node test/test.js [-v|-q]` where `-v` is for "verbose" and `-q` is for
 
 ## Documentation
 
-
+A good way to learn about this server is to check out the documentation already avail on pubnub.com
 
 

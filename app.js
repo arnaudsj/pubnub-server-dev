@@ -1,6 +1,6 @@
 require.paths.unshift('./.node_libraries');
 
-DEBUG = 0;
+DEBUG = 1;
 
 var sys = require('sys'),
 	express = require('express'),
@@ -92,7 +92,7 @@ var app = express.createServer();
 
 app.configure(function(){
     app.use(express.methodOverride());
-    app.use(express.bodyDecoder());
+    //app.use(express.bodyDecoder());
     app.use(app.router);
 	app.set('view engine', 'ejs');
 	app.set('view options', {
@@ -240,7 +240,7 @@ app.get('/', function(req, res)
 	redDataClient.zrangebyscore(channel, "("+timeToken, "+inf", function(error, replies) 
 	{
 		p.debug("querying redis zrange for"+ channel + " / " + (timeToken) + "=> "+ replies);
-		if (replies !== null) 
+		if (replies.toString() !== "") 
 		{
 			var messages = JSON.parse('['+replies.toString()+']');
 			var maxTimeToken = +new Date;
@@ -283,7 +283,7 @@ app.get('/', function(req, res)
 					p.debug("**** querying redis zrange for"+  chan + " / " + (timeToken+1));
 					redDataClient.zrangebyscore(chan, "("+timeToken, "+inf", function(error, replies) 
 					{
-						if (replies !== null) 
+						if (replies.toString() !== "") 
 						{
 							var messages = JSON.parse('['+replies.toString()+']');
 							var maxTimeToken = +new Date;
