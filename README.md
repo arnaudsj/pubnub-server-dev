@@ -8,22 +8,19 @@
 
 When working from a git clone:
 
-    var sys = require("sys");
-    var client = require("../lib/redis-client").createClient();
-    client.info(function (err, info) {
-        if (err) throw new Error(err);
-        sys.puts("Redis Version is: " + info.redis_version);
-        client.close();
-    });
+  make
+  bin/redis-server
+  bin/node app.js 127.0.0.1 8080 localhost
+  open app-showcase/mouse-speak/index.htm
 
 - Refer to the many tests in `test/test.js` for many usage examples.
-- Refer to the `examples/` directory for focused examples.
+- Refer to the `app-showcase/` directory for focused examples.
 
 ## Installation
 
-This version requires at least `Node.js v0.2.0`.
+This version requires at least `Node.js v0.4.0`.
 
-Tested with Node.js `v0.2.0`.
+Tested with Node.js `v0.4.0`.
 
 You have a number of choices:
 

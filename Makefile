@@ -5,7 +5,7 @@ clean:
 
 tests:
 	bin/vows --spec
-	
+
 git:
 	git submodule init; git submodule update
 
@@ -24,11 +24,6 @@ npm:
 	PATH=bin bin/npm config set binroot ${PWD}/bin
 	PATH=bin bin/npm config set tar `which tar`
 	PATH=bin bin/npm config set gzipbin `which gzip`
-
-# npm:
-# 	rm -Rf ${PWD}/.node_libraries;
-# 	cd deps/npm; export PATH=${PWD}/bin:$(PATH); make
-# 	bin/npm config set root  ${PWD}/.node_libraries
 
 npmmods:
 	PATH=bin bin/npm install vows@latest;
